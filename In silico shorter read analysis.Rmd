@@ -1,0 +1,123 @@
+---
+title: "Simulation analysis - for publication"
+author: "Emily Levy"
+date: "7/08/2024"
+output: html_document
+---
+
+## Goal & Details
+
+### The goal
+The goal of this simulation was to figure out how much data we would lose by running our samples on 50-cycle reads instead of the 75-cycle reads that the lab has used before. 
+
+### The process
+We used data from Bentz et al 2019 BMC Genomics, which looked at gene expression in female tree swallow brains in territorial establishment (TE) and incubation. The females collected during TE were engaged in territorial intrusions (real ones, not STIs) at the time they were caught. In the VmT (NT) brain region, this paper found that 196 genes were differentially expressed (and higher) during TE, while 820 were differentially expressed (higher) during incubation. Note that there is no "control" condition here, just comparing TE to incubation.
+
+Using the 75-cycle reads from these birds, we trimmed each read down to the equivalent of a 50-cycle read. Both are paired-end.
+
+Before mapping, we then randmoly selected 7% of these reads for all study subjects. 
+
+This subset of reads was then mapped onto the same transcriptome that was used in the original paper.
+
+### My analysis
+Using this output, we can address a couple of questions:
+
+1. Ideally reads map onto transcripts with high confidence. After downsizing to the 50-cycle reads, what percent of reads mapped too poorly to analyze? In other words, what percent of reads did we lose? We used a MAPQ cut-off of 20 for this - what percent of reads fell below MAPQ of 20 when downsizing to 50-cycle?  
+
+2. After downsizing to the 50-cycle reads, what percent of excellent reads became lower-quality reads? We used a MAPQ of >=42 as "excellent" for this.  
+
+3. Ideally the gene expression is the same between transcripts that were mapped from 50-cycle reads and 75-cycle reads. After downsizing to 50-cycle reads, what percent of transcripts showed a large change in expression compared to the 75-cycle reads? In other words, how does our quantification of gene expression change between 50- and 75-cycle reads? For each transcript, we used the log2-fold change between the # reads with 75-cycle vs 50-cycle. We considered an absolute value of log2-fold change of 1 (ie, more than twice the level of expression in one condition vs the other) as worthy of flagging.
+
+4. Of the DEGs that Bentz et al found in the original paper, how many of them fall into the flagged category of #3? In other words, of those DEGs, how many of them show substantially different expression when using 75-cycle vs 50-cycle reads? We need to remember here that the expression data we have is only from 7% of total reads.
+
+```{r, include = F}
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+
+# Load spreadsheets
+setwd("~/Downloads")
+
+mapq_df <- read_xlsx("delta.NT.trans.xlsx", sheet = 1) # Simulation results
+
+expression <- read_xlsx("delta.NT.trans.xlsx", sheet = 2) # Simulation results
+
+expression2 <- read_xlsx("delta.NT.trans.xlsx", sheet = 3) # Simulation results, filtered to only include the genes that match to our high-quality transcriptome (ie, we know what aves gene they hit to)
+
+sig_deseq <- read_xlsx("delta.NT.trans.xlsx", sheet = 4) # DEGs in VmT from Bentz et al
+```
+
+## 1. What percent of reads did we lose?
+1. Ideally reads map onto transcripts with high confidence. After downsizing to the 50-cycle reads, what percent of reads then mapped too poorly to analyze? In other words, what percent of reads did we lose? 
+
+We used a MAPQ cut-off of 20 for this. 
+
+We want the sum of 50-cycle reads that had MAPQ <= 20. Then we want that sum expressed as the proportion of total 50-cycle reads. Remember that all transcripts had a MAPQ >20 with 75-cycle reads, so this number is the percent of reads we lost by going from 75- to 50-cycle.
+
+```{r, echo=FALSE}
+mapq_df %>% filter(mapq < 21) %>% summarise(proportion_50cyc_reads_low_mapq = sum(prop_of_total_50cycle)) %>% kable(col.names = c("Proportion of 50-cycle reads that had MAPQ <= 20"))
+```
+
+So, 2.7% of reads that mapped okay with 75-cycle reads (MAPQ > 20) now mapped poorly with 50-cycle reads (MAPQ <= 20). That seems pretty low to me, which is good.
+
+
+## 2. How many excellent reads got worse?
+2. After downsizing to the 50-cycle reads, what percent of excellent reads became lower-quality reads? We used a MAPQ of >=42 as "excellent" for this.  
+
+```{r, echo=FALSE}
+mapq_df %>% filter(mapq == 42) %>% select(prop_of_total_50cycle) %>% kable(col.names = c("Proportion of 50-cycle reads with MAPQ >= 42")) 
+
+mapq_df %>% filter(mapq == 42) %>% select(prop_of_total_75cycle) %>% kable(col.names = c("Proportion of 75-cycle reads with MAPQ >= 42")) 
+```
+
+So, 88.9% of 50-cycle reads had "excellent" mapping, whereas 88.0% of 75-cycle reads had "excellent" mapping. Yay! We didn't expect this number to be higher for 50-cycle reads. We suspect it's due to a mismatch it the later part of the read[s]. Seems like we're good here too.
+
+
+## 3. Log 2-fold change in expression
+3. Ideally the gene expression is the same between transcripts that were mapped from 50-cycle reads and 75-cycle reads. After downsizing to 50-cycle reads, what percent of transcripts showed a large change in expression compared to the 75-cycle reads? In other words, how does our quantification of gene expression change between 50- and 75-cycle reads? For each transcript, we used the 2-fold change between the # reads with 75-cycle vs 50-cycle. We considered an absolute value of log2-fold change of 1 (ie, more than twice the level of expression in one condition vs the other) as worthy of flagging.
+
+Note: I'm doing this twice. First using the full expression dataframe from the main analysis, which included reads from ~62,000 transcripts. Our TRES transcriptome (of high quality gene-associated transcripts) is 14,000 transcripts. So I re-did it with the ~12,000 transcripts that I was able to match between our TRES transcriptome and the longer list of transcripts. As you can see, the results are identical! (Proportionally speaking)
+
+First run, with all 62,000 transcripts: Proportionally, very few transcripts had log2-fold changes of more than 1 (or less than -1). In total, 2.0% of transcripts had log2-fold changes of more than 1 or less than -1. This was made up of 1211 transcripts with log2-fold change of < -1 (meaning the 50-cycle reads were less than half the 75-cycle reads), and 4 transcripts with log2-fold change of > 1 (meaning the 50-cycle reads were more than double the 75-cycle reads). This is shown below in the tables and with a density plot. 
+
+```{r, echo=FALSE}
+expression %>% filter(log2_ratio > 1) %>% nrow() %>% kable(col.names = c("Number of transcripts where 50-cycle expression was at least double 75-cycle expression")) 
+expression %>% filter(log2_ratio < -1) %>% nrow() %>% kable(col.names = c("Number of transcripts where 75-cycle expression was at least double 50-cycle expression")) 
+x <- expression %>% filter(abs_log2_ratio > 1) %>% nrow() 
+y <- x/nrow(expression) 
+y %>% kable(col.names = c("Proportion of transcripts where there was at least a 2-fold change between 50- and 75-cycle expression")) 
+ggplot(expression, aes(x=log2_ratio)) + geom_density() + geom_vline(xintercept = c(-1, 1), color = "red") + labs(subtitle = "Red lines are at -1 and 1") + theme_minimal()
+```
+
+Second run, with 11,715 transcripts whose genes are mapped: Proportionally, very few transcripts had log2-fold changes of more than 1 (or less than -1). In total, 0.9% of transcripts had log2-fold changes of more than 1 or less than -1. This was made up of 106 transcripts with log2-fold change of < -1 (meaning the 50-cycle reads were less than half the 75-cycle reads), and 0 transcripts with log2-fold change of > 1 (meaning the 50-cycle reads were more than double the 75-cycle reads). 
+
+```{r, echo=FALSE}
+x <- expression2 %>% filter(abs_log2_ratio > 1) %>% nrow() 
+y <- x/nrow(expression2)
+y %>% kable(col.names = c("Proportion of transcripts where there was at least a 2-fold change between 50- and 75-cycle expression")) 
+ggplot(expression2, aes(x=log2_ratio)) + geom_density() + geom_vline(xintercept = c(-1, 1), color = "red") + labs(subtitle = "Red lines are at -1 and 1") + theme_minimal()
+```
+
+
+## 4. DEGs
+4. Of the DEGs that Alex found in the original paper, how many of them fall into the flagged category of #3? In other words, of the DEGs, how many of them show substantially different expression when using 75-cycle vs 50-cycle reads? We need to remember here that the expression data we have from the simulation is only from 7% of total reads.
+
+We linked the list of Bentz et al DEGs to the simulation results using the transcriptome. We can only link in ~60% of the DEGs (632) here, due to the data and settings of the in silico experiment, but this should not bias our results in any way. 
+
+How many of these 632 DEGs had high log2-fold change between 50- and 75-cycle reads? There are 2/632 DEGs in which there was >2-fold change. It was always in the direction of the 75-cycle read having >2x as many reads as the 50-cycle. This amounts to 0.3 percent of the DEGs. The figure shows a density plot of log2-fold change. So, a fair amount less, proportionally, than with the full dataset.
+
+```{r, echo=FALSE}
+sig_deseq %>% filter(log2_ratio > 1) %>% nrow() %>% kable(col.names = c("Number of DEGs where 50-cycle expression was at least double 75-cycle expression")) 
+sig_deseq %>% filter(log2_ratio < -1) %>% nrow() %>% kable(col.names = c("Number of DEGs where 75-cycle expression was at least double 50-cycle expression")) 
+g <- sig_deseq %>% filter(abs_log2_ratio > 1) %>% nrow() 
+h <- g/nrow(sig_deseq)
+h %>% kable(col.names = c("Proportion of DEGs where there was at least a 2-fold change between 50- and 75-cycle expression")) 
+ggplot(sig_deseq, aes(x=log2_ratio)) + geom_density() + geom_vline(xintercept = c(-1, 1), color = "red") + labs(subtitle = "Red lines are at -1 and 1") + theme_minimal()
+
+```
+
+
+
+## Conclusions
+50-cycle reads results in minimal loss of reads and read quality, and they enable us to perform significantly more sequencing. In addition, DEGs seem particularly immune to the switch to 50-cycle reads.
