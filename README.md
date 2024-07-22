@@ -1,8 +1,8 @@
-# Tree-Swallow-Maternal-Aggression
+# Tree-Swallow-Social-Challenge-During-Incubation
 
-This repository contains the code and data used for the analysis of "Transcriptional correlates of maternal aggression in the female tree swallow brain"
+This repository contains the code and data used for the analysis of "Brain transcriptomics of a social challenge and maternal aggression in incubating female tree swallows"
 
-1. Raw counts (RNAseq data) for both brain regions: rawCounts.dSBN.xlsx & rawCounts.vSBN.xlsx
+1. Raw counts (RNAseq data) for both brain regions, along with gene information about each transcript: rawCounts.dSBN.xlsx & rawCounts.vSBN.xlsx, Gene Info.xlsx
 2. Code to rerun Deseq2 analysis: Incubation aggression Deseq2 script.R
 3. Code to rerun circulating testosterone analyses: Circulating testosterone analysis.R
 4. Code to recreate all figures: Incubation aggression code for all plots.R
